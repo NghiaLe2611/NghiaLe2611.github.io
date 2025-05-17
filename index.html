@@ -44,7 +44,7 @@
 				// Fake login
 				const [username, setUsername] = React.useState('');
 				const [password, setPassword] = React.useState('');
-				const [isShow, setIsShow] = React.useState(isAuth ?? true);
+				const [isShow, setIsShow] = React.useState(isAuth ?? false);
 
 				React.useEffect(() => {
 					localStorage.removeItem('auth');
@@ -413,7 +413,9 @@
 															&nbsp;{house.viewed ? 'Đã xem' : 'Chưa xem'}
 														</span>
 													</div>
-													<p style={{ whiteSpace: 'break-spaces' }}>Thông tin: {house.info || ''}</p>
+													<p style={{ whiteSpace: 'break-spaces' }}>
+														Thông tin: {house.info || ''}
+													</p>
 													<p>
 														Diện tích: {house.length || 'NA'} x {house.width || 'NA'} m²
 													</p>
@@ -495,7 +497,7 @@
 								{/* House Modal */}
 								{showHouseModal && (
 									<div className='modal show d-flex align-items-center' tabIndex='-1'>
-										<div className='modal-dialog' style={{maxHeight: '90vh', overflowY: 'auto'}}>
+										<div className='modal-dialog' style={{ maxHeight: '90vh', overflowY: 'auto' }}>
 											<form className='modal-content' onSubmit={handleSubmitForm}>
 												<div className='modal-header'>
 													<h5 className='modal-title'>Thêm/Sửa Nhà</h5>
