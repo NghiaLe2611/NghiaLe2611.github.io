@@ -1,0 +1,8 @@
+.carousel img {
+    height: 200px;
+    object-fit: cover;
+}
+
+.seen-icon {
+    cursor: pointer;
+}

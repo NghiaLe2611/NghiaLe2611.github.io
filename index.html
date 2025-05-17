@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="vi">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Quản lý nhà</title>
+		<link rel="stylesheet" href="./css/bootstrap.min.css" />
+		<link rel="stylesheet" href="./css/jquery-ui.css" />
+		<link rel="stylesheet" href="./css/styles.css" />
+
+		<!-- Thêm React và ReactDOM -->
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.22.10/babel.min.js"></script>
+	</head>
+
+	<body>
+		<div id="root"></div>
+
+		<!-- JS -->
+		<script src="./js/jquery-3.7.1.min.js"></script>
+		<script src="./js/bootstrap.bundle.min.js"></script>
+		<script src="./js/jquery-ui.js"></script>
+
+		<!-- React Component -->
+		<script type="text/babel">
+			const API_BASE = 'http://localhost:8000/houses';
+			const isAuth = localStorage.getItem('auth');
+			function formatDate(dateStr) {
+				if (!dateStr) return '';
+				const [year, month, day] = dateStr.split('-');
+				return `${day}/${month}/${year}`;
+			}
+
+			const App = () => {
+				const [allHouses, setAllHouses] = React.useState([]);
+				const [currentTab, setCurrentTab] = React.useState('all');
+				const [editHouseData, setEditHouseData] = React.useState(null);
+				const [showHouseModal, setShowHouseModal] = React.useState(false);
+				const [showMapModal, setShowMapModal] = React.useState(false);
+				const [selectedAddress, setSelectedAddress] = React.useState('');
+				const [sortOrder, setSortOrder] = React.useState('asc');
+
+				// Fake login
+				const [username, setUsername] = React.useState('');
+				const [password, setPassword] = React.useState('');
+				const [isShow, setIsShow] = React.useState(isAuth ?? true);
+
+				React.useEffect(() => {
+					localStorage.removeItem('auth');
+				}, []);
+
+				// Format giá
+				const formatPrice = (price) => {
+					return new Intl.NumberFormat('vi-VN', {
+						style: 'currency',
+						currency: 'VND',
+					}).format(price);
+				};
+
+				// Load data
+				const loadHouses = React.useCallback(() => {
+					fetch(API_BASE)
+						.then((res) => res.json())
+						.then((data) => {
+							setAllHouses(data);
+						})
+						.catch((err) => console.error('Error loading houses:', err));
+				}, []);
+
+				// Toggle trạng thái đã xem/chưa xem
+				const toggleSeen = (id) => {
+					const house = allHouses.find((h) => h._id === id);
+					const updated = { viewed: !house.viewed };
+
+					fetch(`${API_BASE}/${id}`, {
+						method: 'PATCH',
+						headers: { 'Content-Type': 'application/json' },
+						body: JSON.stringify(updated),
+					})
+						.then(() => loadHouses())
+						.catch((err) => console.error('Error toggling seen status:', err));
+				};
+
+				// Xử lý edit house
+				const handleEditHouse = (id) => {
+					const house = allHouses.find((h) => h._id === id);
+					setEditHouseData(house);
+					setShowHouseModal(true);
+				};
+
+				// Xử lý hiển thị bản đồ
+				const handleShowMap = (address) => {
+					setSelectedAddress(address);
+					setShowMapModal(true);
+				};
+
+				// Xử lý xóa nhà
+				const handleDeleteHouse = (id) => {
+					if (!confirm('Bạn có chắc muốn xóa?')) return;
+
+					fetch(`${API_BASE}/${id}`, {
+						method: 'DELETE',
+					})
+						.then((res) => {
+							if (res.ok) {
+								loadHouses();
+							}
+						})
+						.catch((err) => console.error('Error deleting house:', err));
+				};
+
+				// Xử lý submit form
+				const handleSubmitForm = async (e) => {
+					e.preventDefault();
+					const formData = new FormData(e.target);
+					const data = {};
+
+					// Extract data from form
+					for (const [key, value] of formData.entries()) {
+						if (value) {
+							if (['price', 'length', 'width'].includes(key)) {
+								data[key] = +value;
+							} else {
+								data[key] = value;
+							}
+						}
+					}
+
+					// Handle checkbox separately
+					if (editHouseData) {
+						data.viewed = formData.get('viewed') === 'on';
+					}
+
+					const files = formData.getAll('images');
+
+					if (files && files.length > 0 && files[0].name) {
+						try {
+							/*
+													const uploadedUrls = await Promise.all(
+														files.map(async (file) => {
+															const imageForm = new FormData();
+															imageForm.append('source', file);
+															imageForm.append('action', 'upload');
+															imageForm.append('type', 'file');
+															//imageForm.append('key', '6d207e02198a847aa98d0a2a901485a5');
+
+															const submitFiles = {
+																source: file,
+																format: 'json',
+															};
+
+															const res = await fetch(
+																'https://freeimage.host/api/1/upload/?key=6d207e02198a847aa98d0a2a901485a5',
+																{
+																	method: 'POST',
+																	headers: {
+																		'Content-Type': 'application/json',
+																	},
+																	body: JSON.stringify(submitFiles),
+																	//body: imageForm,
+																},
+															);
+															const json = await res.json();
+															console.log(111, json);
+															if (json?.image?.display_url) return json.image.display_url;
+															throw new Error('Upload ảnh không thành công');
+														}),
+													);
+						                            */
+
+							const uploadedUrls = await Promise.all(
+								files.map(async (file) => {
+									// Đọc file thành base64
+									const base64 = await new Promise((resolve, reject) => {
+										const reader = new FileReader();
+										reader.onload = () => resolve(reader.result.split(',')[1]); // Bỏ prefix
+										reader.onerror = reject;
+										reader.readAsDataURL(file);
+									});
+									const imageForm = new FormData();
+									imageForm.append('image', base64);
+
+									const res = await fetch(
+										`https://api.imgbb.com/1/upload?key=5c9b5f25c508afebdc904d6758dbb8b1`,
+										{
+											method: 'POST',
+											/*
+																	headers: {
+																		'Content-Type': 'multipart/form-data',
+																	},
+						                                            */
+											body: imageForm,
+										},
+									);
+
+									const json = await res.json();
+									if (json?.success) return json.data?.url; // image.url thumb.url, medium.url
+									throw new Error('Upload thất bại');
+								}),
+							);
+
+							data.images = uploadedUrls;
+						} catch (err) {
+							console.warn('Không thể upload ảnh:', err);
+						}
+					}
+
+					const id = editHouseData ? editHouseData._id : null;
+					const method = id ? 'PATCH' : 'POST';
+					const url = id ? `${API_BASE}/${id}` : API_BASE;
+
+					const submitData = { ...data };
+					if (submitData.images && Object.keys(submitData.images).length === 0) {
+						delete submitData.images;
+					}
+
+					fetch(url, {
+						method,
+						headers: { 'Content-Type': 'application/json' },
+						body: JSON.stringify(submitData),
+					})
+						.then(() => {
+							loadHouses();
+							setShowHouseModal(false);
+							setEditHouseData(null);
+						})
+						.catch((err) => console.error('Error saving house:', err));
+				};
+
+				const sortedHouses = [...allHouses].sort((a, b) => {
+					const dateA = new Date(a.visitDate || '');
+					const dateB = new Date(b.visitDate || '');
+					return sortOrder === 'asc' ? dateA.getTime() - dateB.getTime() : dateB.getTime() - dateA.getTime();
+				});
+
+				// Lọc nhà theo tab
+				const getFilteredHouses = () => {
+					switch (currentTab) {
+						case 'seen':
+							return sortedHouses.filter((h) => h.viewed);
+						case 'unseen':
+							return sortedHouses.filter((h) => !h.viewed);
+						default:
+							return sortedHouses;
+					}
+				};
+
+				const handleAuth = (e) => {
+					e.preventDefault();
+					if (username === 'admin' && password === '26111994') {
+						setIsShow(true);
+						localStorage.setItem('auth', true);
+					} else {
+						alert('Tài khoản không đúng !');
+						setIsShow(false);
+						localStorage.removeItem('auth');
+					}
+				};
+
+				// Load data
+				React.useEffect(() => {
+					loadHouses();
+				}, [loadHouses]);
+
+				const filteredHouses = getFilteredHouses();
+
+				return (
+					<div className='container py-3'>
+						<h3 className='text-center mb-3'>Quản lý Nhà ở</h3>
+						{!isShow && (
+							<form className='mb-5' onSubmit={handleAuth}>
+								<div class='mb-2'>
+									<label class='form-label'>Username</label>
+									<input
+										type='text'
+										class='form-control'
+										onChange={(e) => setUsername(e.target.value)}
+									/>
+								</div>
+								<div class='mb-4'>
+									<label class='form-label'>Password</label>
+									<input
+										type='password'
+										class='form-control'
+										onChange={(e) => setPassword(e.target.value)}
+									/>
+								</div>
+
+								<div class='text-center'>
+									<button type='submit' class='btn btn-primary'>
+										Submit
+									</button>
+								</div>
+							</form>
+						)}
+						{isShow && (
+							<div className='content'>
+								{/* Tab Navigation */}
+								<ul className='nav nav-tabs mb-3' id='tabView'>
+									<li className='nav-item'>
+										<a
+											className={`nav-link ${currentTab === 'all' ? 'active' : ''}`}
+											href='#'
+											onClick={(e) => {
+												e.preventDefault();
+												setCurrentTab('all');
+											}}>
+											Tất cả
+										</a>
+									</li>
+									<li className='nav-item'>
+										<a
+											className={`nav-link ${currentTab === 'seen' ? 'active' : ''}`}
+											href='#'
+											onClick={(e) => {
+												e.preventDefault();
+												setCurrentTab('seen');
+											}}>
+											Đã xem
+										</a>
+									</li>
+									<li className='nav-item'>
+										<a
+											className={`nav-link ${currentTab === 'unseen' ? 'active' : ''}`}
+											href='#'
+											onClick={(e) => {
+												e.preventDefault();
+												setCurrentTab('unseen');
+											}}>
+											Chưa xem
+										</a>
+									</li>
+								</ul>
+
+								{/* Add Button */}
+								<div className='d-flex justify-content-between mb-2'>
+									<select
+										style={{ width: 'auto' }}
+										value={sortOrder}
+										onChange={(e) => setSortOrder(e.target.value)}
+										className='form-select form-select-sm me-4'>
+										<option value='desc'>Ngày xa nhất (↓)</option>
+										<option value='asc'>Ngày gần nhất (↑)</option>
+									</select>
+
+									<button
+										className='btn btn-primary'
+										onClick={() => {
+											setEditHouseData(null);
+											setShowHouseModal(true);
+										}}>
+										Thêm nhà
+									</button>
+								</div>
+
+								{/* House List */}
+								<div id='houseList' className='row g-3'>
+									{filteredHouses.length === 0 ? (
+										<p className='text-center text-muted'>Chưa có dữ liệu</p>
+									) : (
+										filteredHouses.map((house) => {
+											const area = house.length * house.width;
+											const pricePerM2 =
+												house.price && area ? formatPrice(house.price / area) : '';
+											const priceText = house.price
+												? `${formatPrice(house.price)} (${pricePerM2}/m²)`
+												: 'Chưa rõ';
+
+											return (
+												<div key={house._id} className='col-12 house-card card p-3'>
+													<div class='d-flex flex-column flex-md-row justify-content-md-between'>
+														<h5
+															className='text-primary'
+															style={{ cursor: 'pointer' }}
+															onClick={() => handleShowMap(house.address)}>
+															Địa chỉ: {house.address}
+														</h5>
+														<span
+															className='seen-icon mb-3 mb-md-0'
+															onClick={() => toggleSeen(house._id)}
+															style={{ cursor: 'pointer' }}>
+															{house.viewed ? (
+																<svg
+																	xmlns='http://www.w3.org/2000/svg'
+																	width={24}
+																	height={24}
+																	viewBox='0 0 24 24'
+																	fill='none'
+																	stroke='green'
+																	strokeWidth={2}
+																	strokeLinecap='round'
+																	strokeLinejoin='round'
+																	className='lucide lucide-square-check-icon lucide-square-check'>
+																	<rect width={18} height={18} x={3} y={3} rx={2} />
+																	<path d='m9 12 2 2 4-4' />
+																</svg>
+															) : (
+																<svg
+																	xmlns='http://www.w3.org/2000/svg'
+																	width={24}
+																	height={24}
+																	viewBox='0 0 24 24'
+																	fill='none'
+																	stroke='currentColor'
+																	strokeWidth={2}
+																	strokeLinecap='round'
+																	strokeLinejoin='round'
+																	className='lucide lucide-square-icon lucide-square'>
+																	<rect width={18} height={18} x={3} y={3} rx={2} />
+																</svg>
+															)}
+															&nbsp;{house.viewed ? 'Đã xem' : 'Chưa xem'}
+														</span>
+													</div>
+													<p style={{ whiteSpace: 'break-spaces' }}>Thông tin: {house.info || ''}</p>
+													<p>
+														Diện tích: {house.length || 'NA'} x {house.width || 'NA'} m²
+													</p>
+													<p>Giá: {priceText}</p>
+													<p>Ngày đi xem: {formatDate(house.visitDate) || ''}</p>
+													<p>
+														Website: &nbsp;
+														{house.url && (
+															<a href={house.url} target='_blank'>
+																{house.url}
+															</a>
+														)}
+													</p>
+
+													<div
+														id='carouselExampleControls'
+														className='carousel slide'
+														data-bs-ride='carousel'>
+														<div className='carousel-inner'>
+															{house?.images.map((url, index) => (
+																<div
+																	key={index}
+																	className={`carousel-item ${
+																		index === 0 ? 'active' : ''
+																	}`}>
+																	<img
+																		src={url}
+																		className='d-block w-100'
+																		alt={`Slide ${index + 1}`}
+																	/>
+																</div>
+															))}
+														</div>
+														{house?.images.length > 1 && (
+															<>
+																<button
+																	className='carousel-control-prev'
+																	type='button'
+																	data-bs-target='#carouselExampleControls'
+																	data-bs-slide='prev'>
+																	<span
+																		className='carousel-control-prev-icon'
+																		aria-hidden='true'
+																	/>
+																	<span className='visually-hidden'>Previous</span>
+																</button>
+																<button
+																	className='carousel-control-next'
+																	type='button'
+																	data-bs-target='#carouselExampleControls'
+																	data-bs-slide='next'>
+																	<span
+																		className='carousel-control-next-icon'
+																		aria-hidden='true'
+																	/>
+																	<span className='visually-hidden'>Next</span>
+																</button>
+															</>
+														)}
+													</div>
+													<div className='d-flex justify-content-end gap-2 mt-2'>
+														<button
+															className='btn btn-sm btn-warning'
+															onClick={() => handleEditHouse(house._id)}>
+															Sửa
+														</button>
+														<button
+															className='btn btn-sm btn-danger'
+															onClick={() => handleDeleteHouse(house._id)}>
+															Xóa
+														</button>
+													</div>
+												</div>
+											);
+										})
+									)}
+								</div>
+
+								{/* House Modal */}
+								{showHouseModal && (
+									<div className='modal show d-flex align-items-center' tabIndex='-1'>
+										<div className='modal-dialog' style={{maxHeight: '90vh', overflowY: 'auto'}}>
+											<form className='modal-content' onSubmit={handleSubmitForm}>
+												<div className='modal-header'>
+													<h5 className='modal-title'>Thêm/Sửa Nhà</h5>
+													<button
+														type='button'
+														className='btn-close'
+														onClick={() => setShowHouseModal(false)}></button>
+												</div>
+												<div className='modal-body'>
+													<input
+														type='hidden'
+														name='_id'
+														defaultValue={editHouseData?._id || ''}
+													/>
+													<div className='mb-3'>
+														<label>Địa chỉ</label>
+														<input
+															type='text'
+															className='form-control'
+															name='address'
+															defaultValue={editHouseData?.address || ''}
+															required
+														/>
+													</div>
+													<div className='mb-3'>
+														<label>Thông tin</label>
+														<textarea
+															className='form-control'
+															name='info'
+															defaultValue={editHouseData?.info || ''}
+															rows={4}
+															style={{ whiteSpace: 'pre', resize: 'none' }}></textarea>
+													</div>
+													<div className='mb-3'>
+														<label>Giá</label>
+														<input
+															type='number'
+															className='form-control'
+															name='price'
+															defaultValue={editHouseData?.price || ''}
+														/>
+													</div>
+													<div className='row mb-3'>
+														<div className='col'>
+															<label>Chiều dài</label>
+															<input
+																type='text'
+																className='form-control'
+																name='length'
+																defaultValue={editHouseData?.length || ''}
+															/>
+														</div>
+														<div className='col'>
+															<label>Chiều rộng</label>
+															<input
+																type='text'
+																className='form-control'
+																name='width'
+																defaultValue={editHouseData?.width || ''}
+															/>
+														</div>
+													</div>
+													<div className='mb-3'>
+														<label>Hình ảnh</label>
+														<input
+															type='file'
+															className='form-control'
+															name='images'
+															multiple
+															accept='image/*'
+														/>
+													</div>
+
+													<div className='mb-3'>
+														<label>Website</label>
+														<input
+															type='text'
+															className='form-control'
+															name='url'
+															defaultValue={editHouseData?.url || ''}
+														/>
+													</div>
+													<div className='mb-3'>
+														<label>Ngày đi xem</label>
+														<input
+															type='date'
+															className='form-control'
+															name='visitDate'
+															defaultValue={editHouseData?.visitDate || ''}
+														/>
+													</div>
+													{editHouseData && (
+														<div className='d-flex mb-3'>
+															<input
+																className='form-check-input'
+																type='checkbox'
+																id='viewed'
+																name='viewed'
+																defaultChecked={editHouseData?.viewed}
+															/>
+															<label htmlFor='viewed' for='viewed'>
+																&nbsp;Đã xem
+															</label>
+														</div>
+													)}
+												</div>
+												<div className='modal-footer'>
+													<button type='submit' className='btn btn-success'>
+														Lưu
+													</button>
+													<button
+														type='button'
+														className='btn btn-secondary'
+														onClick={() => setShowHouseModal(false)}>
+														Hủy
+													</button>
+												</div>
+											</form>
+										</div>
+									</div>
+								)}
+
+								{/* Map Modal */}
+								{showMapModal && (
+									<div className='modal show d-block' tabIndex='-1'>
+										<div className='modal-dialog modal-lg'>
+											<div className='modal-content'>
+												<div className='modal-header'>
+													<h5 className='modal-title'>{selectedAddress}</h5>
+													<button
+														type='button'
+														className='btn-close'
+														onClick={() => setShowMapModal(false)}></button>
+												</div>
+												<iframe
+													width='100%'
+													height='450'
+													style={{ border: 0 }}
+													allowFullScreen
+													loading='lazy'
+													src={`https://www.google.com/maps/embed/v1/place?key=AIzaSyB41DRUbKWJHPxaFjMAwdrzWzbVKartNGg&q=${encodeURIComponent(
+														selectedAddress,
+													)}`}></iframe>
+											</div>
+										</div>
+									</div>
+								)}
+
+								{/* Modal Backdrop */}
+								{(showHouseModal || showMapModal) && (
+									<div
+										className='modal-backdrop show'
+										onClick={() => {
+											setShowHouseModal(false);
+											setShowMapModal(false);
+										}}></div>
+								)}
+							</div>
+						)}
+					</div>
+				);
+			};
+
+			// Render React component
+			const rootElement = document.getElementById('root');
+			const root = ReactDOM.createRoot(rootElement);
+			root.render(<App />);
+		</script>
+	</body>
+</html>
